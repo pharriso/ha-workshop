@@ -335,6 +335,9 @@ sup {
 <td>Create and Manage Cluster Resources</td>
 </tr>
 <tr>
+<td>Access pcsd Web UI</td>
+</tr>
+<tr>
 <td>Adding Nodes</td>
 </tr>
 <tr>
@@ -767,8 +770,109 @@ Ticket Constraints:
 </code></pre>
 
 <h4 id="toc_18">Unmanaging resources</h4>
-<p>Sometimes it can be useful to be able to stop and start resources outside of the clusters control. Unmanaging a resource stops pcs from actively manaing a resource.</p>
-<pre><code class="language-none"># pcs resource disable www_app
-# pcs resource enable www_app
-# pcs resource restart www_app
+<p>Sometimes it can be useful to be able to stop and start resources outside of the clusters control. Unmanaging a resource stops pcs from actively manaing a resource. The below example would allow us to stop httpd without the cluster taking any action.</p>
+
+<pre><code class="language-none"># pcs resource unmanage www_app
+# systemctl stop httpd
+# pcs resource manage www_app
 </code></pre>
+
+<h3 id="toc_18">Managing Nodes</h2>
+
+<p>Sometimes we need to perform maintenance on nodes and need to either stop them from running resources or particular resources. Placing a node in standby stops it from running any resources.</p>
+
+<pre><code class="language-none"># pcs cluster standby nodea.example.com</code></pre>
+
+<p>pcs status will confirm the node is now in standby. If it was running the cluster resources they will have moved to another node.</p>
+
+
+<pre><code class="language-none"># pcs status
+Cluster name: cluster1
+Stack: corosync
+Current DC: nodea.demolab.local (version 1.1.18-11.el7_5.2-2b07d5c5a9) - partition with quorum
+Last updated: Thu May 31 15:11:14 2018
+Last change: Thu May 31 15:11:05 2018 by root via cibadmin on nodea.demolab.local
+
+3 nodes configured
+7 resources configured
+
+Node nodea.demolab.local: standby
+Online: [ nodeb.demolab.local nodec.demolab.local ]
+
+Full list of resources:
+
+ nodea-fence	(stonith:fence_xvm):	Started nodeb.demolab.local
+ nodeb-fence	(stonith:fence_xvm):	Started nodec.demolab.local
+ nodec-fence	(stonith:fence_xvm):	Started nodeb.demolab.local
+ Resource Group: webapp
+     ha_vg	(ocf::heartbeat:LVM):	Started nodec.demolab.local
+     www_filesystem	(ocf::heartbeat:Filesystem):	Started nodec.demolab.local
+     www_vip	(ocf::heartbeat:IPaddr2):	Started nodec.demolab.local
+     www_app	(systemd:httpd):	Starting nodec.demolab.local
+
+
+Daemon Status:
+  corosync: active/enabled
+  pacemaker: active/enabled
+  pcsd: active/enabled
+</code></pre>
+
+<p>To enable the node to run resources again we need to unstandby it.</p>
+
+<pre><code class="language-none"># pcs cluster unstandby nodea.example.com</code></pre>
+
+<p>Banning a resource just prevents that resource from running on that node. This may be useful if you have multiple resource groups and only want to prevent one of them from running on a node.</p>
+
+<pre><code class="language-none"># pcs resource ban www_app nodec.example.com
+# pcs resource clear www_app
+</code></pre>
+
+<h3 id="toc_18">Access pcsd Web UI</h2>
+
+<p>The pcs Web UI can be accessed on any of the nodes. For example, browse to https://nodea.example.com:2224 and login with the hacluster credentials we setup when we installed the cluster.</p>
+
+<p><center>
+<img src="images/pcs_login.png"/>
+</center></p>
+
+<p>Once logged in, we can add our existing cluster. Select "Add Existing" and enter the name of one the nodes in the cluster. Then enter the password for the hacluster user if prompted.
+
+We should now be able to manage the cluster through the web ui. An example of the resources screen can be seen.</p>
+
+<p><center>
+<img src="images/pcs_resources.png"/>
+</center></p>
+
+<h1 id="toc_17">Adding a node</h1>
+
+<p>The workflow is very similar to the steps we took when creating a new cluster. We will add noded to the cluster. Install the RHEL HA packages on noded.</p>
+
+<pre><code class="language-none">noded # yum install pcs pacemaker fence-agents-all</code></pre>
+
+<p>Enable cluster communications through the firewall on noded.</p>
+
+<pre><code class="language-none">noded # firewall-cmd --permanent --add-service=high-availability
+noded # firewall-cmd --add-service=high-availability
+</code></pre>
+
+<p>Set password for the pcs administration account.</p>
+
+<pre><code class="language-none">noded # echo Redhat123 | passwd --stdin hacluster</code></pre>
+
+<p>Start and enable the pcs daemon on noded.</p>
+
+<pre><code class="language-none">noded # systemctl enable pcsd && systemctl start pcsd </code></pre>
+
+<p>One an existing node, authenticate the pcs admin user against the new node (noded in our example).</p>
+
+<pre><code class="language-none">nodea # pcs cluster auth noded-priv.example.com</code></pre>
+
+<p>In an existing node, add noded to the cluster.</p>
+
+<pre><code class="language-none">nodea # pcs cluster node add noded-priv.example.com</code></pre>
+
+<p>Finally, on noded we need to start and enable cluster services.</p>
+
+<pre><code class="language-none">noded # pcs cluster start && pcs cluster enable</code></pre>
+
+<p>Verify the new node has been succesfully added with pcs status.</p>
