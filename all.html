@@ -398,20 +398,19 @@ Linux s01.fab.redhat.com 2.6.32-504.16.2.el6.x86_64 #1 SMP Tue Mar 10 17:01:00 E
 <pre><code class="language-none"># whoami
 root</code></pre>
 
-<p>Otherwise, expect the command to start with a dollar sign (<strong>$</strong>), for example:</p>
-
-<pre><code class="language-none">$ whoami
-stack
-
-$ sudo su -
-# whoami
-root</code></pre>
 
 <h1 id="toc_11">RHEL HA Overview</h1>
 
 <h2 id="toc_13">Corosync</h2>
+<h2 id="toc_13">Pacemaker</h2>
+<h2 id="toc_13">Fencing</h2>
 
-<p></p>
+<p> Fencing is the disconnection of a node from the cluster's shared storage. Fencing cuts off I/O from shared storage, thus ensuring data integrity. The cluster infrastructure performs fencing through the STONITH facility.
+When Pacemaker determines that a node has failed, it communicates to other cluster-infrastructure components that the node has failed. STONITH fences the failed node when notified of the failure.</p>
+
+<h2 id="toc_13">Quorum</h2>
+
+<p>In order to maintain cluster integrity and availability, cluster systems use a concept known as quorum to prevent data corruption and loss. A cluster has quorum when more than half of the cluster nodes are online. To mitigate the chance of data corruption due to failure, Pacemaker by default stops all resources if the cluster does not have quorum.</p>
 
 <h1 id="toc_17">Install and Configure</h1>
 
@@ -441,7 +440,7 @@ root</code></pre>
 
 <p>In one node, create and start a cluster called cluster1 consisting of our 3 nodes.</p>
 
-<pre><code class="language-none">nodea # pcs cluster setup --start --enable --name cluster1 nodea-priva.example.com nodeb-priv.example.com nodec-priv.example.com</code></pre>
+<pre><code class="language-none">nodea # pcs cluster setup --start --enable --name cluster1 nodea-priv.example.com nodeb-priv.example.com nodec-priv.example.com</code></pre>
 
 <p>Verify our cluster has been created succesfully.</p>
 
@@ -456,7 +455,7 @@ Last change: Thu May 24 10:29:00 2018 by hacluster via crmd on nodea.example.com
 3 nodes configured
 0 resources configured
 
-Online: [ nodea.example.com nodeb.example.com nodec.example.com ]
+Online: [ nodea-priv.example.com nodeb-priv.example.com nodec-priv.example.com ]
 
 No resources
 
@@ -535,22 +534,22 @@ nodec.example.com              802a74f3-a533-4e76-8135-267b14a193e7 on
 
 <p>We can now create the fencing resources in pacemaker.</p>
 
-<pre><code class="language-none">nodea # pcs stonith create nodea-fence fence_xvm pcmk_host_list="nodea.example.com"
-nodea # pcs stonith create nodeb-fence fence_xvm pcmk_host_list="nodeb.example.com"
-nodea # pcs stonith create nodec-fence fence_xvm pcmk_host_list="nodec.example.com"
+<pre><code class="language-none">nodea # pcs stonith create nodea-fence fence_xvm pcmk_host_map="nodea-priv.example.com:nodea.example.com"
+nodea # pcs stonith create nodeb-fence fence_xvm pcmk_host_map="nodeb-priv.example.com:nodeb.example.com"
+nodea # pcs stonith create nodec-fence fence_xvm pcmk_host_map="nodec-priv.example.com:nodec.example.com"
 </code></pre>
 
 <p>We can confirm the fencing resources are working by running pcs status or pcs stonith.</p>
 
 <pre><code class="language-none">nodea # pcs stonith
- nodea-fence	(stonith:fence_xvm):	Started nodea.example.com
- nodeb-fence	(stonith:fence_xvm):	Started nodec.example.com
- nodec-fence	(stonith:fence_xvm):	Started nodeb.example.com
+ nodea-fence	(stonith:fence_xvm):	Started nodea-priv.example.com
+ nodeb-fence	(stonith:fence_xvm):	Started nodec-priv.example.com
+ nodec-fence	(stonith:fence_xvm):	Started nodeb-priv.example.com
 </code></pre>
 
 <p>Finally, let's test the fencing agent.</p>
 
-<pre><code class="language-none">nodea # pcs stonith fence nodeb.example.com</code></pre>
+<pre><code class="language-none">nodea # pcs stonith fence nodeb-priv.example.com</code></pre>
 
 <p>Once the command prompt comes back we confirm the node has restarted. As these are virtual machines they restart quickly so we can follow the restart easily using watch.</p>
 
@@ -564,14 +563,14 @@ Last change: Thu May 24 11:39:20 2018 by hacluster via crmd on nodeb.example.com
 3 nodes configured
 3 resources configured
 
-Online: [ nodea.example.com nodec.example.com ]
-OFFLINE: [ nodeb.example.com ]
+Online: [ nodea-priv.example.com nodec-priv.example.com ]
+OFFLINE: [ nodeb-priv.example.com ]
 
 Full list of resources:
 
- nodea-fence	(stonith:fence_xvm):	Started nodea.example.com
- nodeb-fence	(stonith:fence_xvm):	Started nodec.example.com
- nodec-fence	(stonith:fence_xvm):	Started nodea.example.com
+ nodea-fence	(stonith:fence_xvm):	Started nodea-priv.example.com
+ nodeb-fence	(stonith:fence_xvm):	Started nodec-priv.example.com
+ nodec-fence	(stonith:fence_xvm):	Started nodea-priv.example.com
 
 Daemon Status:
   corosync: active/enabled
@@ -690,7 +689,7 @@ Default operations:
 </ol>
 <p>Resources added to a resource group and started in the order they are added. First let's add the HA-LVM resource to activate the volume group.</p>
 
-<pre><code class="language-none"># pcs resource create ha_vg LVM volgrpname=ha_vg exclusive=true --group webapp</code></pre>
+<pre><code class="language-none"># pcs resource create www_vg LVM volgrpname=ha_vg exclusive=true --group webapp</code></pre>
 
 <p>Next we need to add a filesystem. We will mount our filesystem at /var/www/html which is our document root.</p>
 
@@ -702,7 +701,13 @@ Default operations:
 
 <p>The final resource we need is apache.</p>
 
-<pre><code class="language-none"># pcs resource create www_app systemd:httpd --group webapp</code></pre>
+<pre><code class="language-none"># pcs resource create www_apache systemd:httpd --group webapp</code></pre>
+
+<p>With the cluster resources online let's copy a simple webpage in place which will show us the hostname we are running on. On the node running the resources copy the file in place and restore selinux contexts.</p>
+
+<pre><code class="language-none"># cp /root/index.php /var/www/html/index.php
+# restorecon -Rv /var/www/html/
+</code></pre>
 
 <p>We should now be able to access our website on it's virtual IP address.</p>
 
@@ -720,18 +725,18 @@ Last change: Mon May 28 21:15:54 2018 by root via crm_resource on nodea.example.
 3 nodes configured
 7 resources configured
 
-Online: [ nodea.example.com nodeb.example.com nodec.example.com ]
+Online: [ nodea-priv.example.com nodeb-priv.example.com nodec-priv.example.com ]
 
 Full list of resources:
 
- nodea-fence	(stonith:fence_xvm):	Started nodea.example.com
- nodeb-fence	(stonith:fence_xvm):	Started nodec.example.com
- nodec-fence	(stonith:fence_xvm):	Started nodeb.example.com
+ nodea-fence	(stonith:fence_xvm):	Started nodea-priv.example.com
+ nodeb-fence	(stonith:fence_xvm):	Started nodec-priv.example.com
+ nodec-fence	(stonith:fence_xvm):	Started nodeb-priv.example.com
  Resource Group: webapp
-     ha_vg	(ocf::heartbeat:LVM):	Started nodea.example.com
-     www_filesystem	(ocf::heartbeat:Filesystem):	Started nodea.example.com
-     www_vip	(ocf::heartbeat:IPaddr2):	Started nodea.example.com
-     www_app	(ocf::heartbeat:apache):	Started nodea.example.com
+     ha_vg	(ocf::heartbeat:LVM):	Started nodea-priv.example.com
+     www_filesystem	(ocf::heartbeat:Filesystem):	Started nodea-priv.example.com
+     www_vip	(ocf::heartbeat:IPaddr2):	Started nodea-priv.example.com
+     www_apache	(ocf::heartbeat:apache):	Started nodea-priv.example.com
 
 Daemon Status:
   corosync: active/enabled
@@ -739,9 +744,6 @@ Daemon Status:
   pcsd: active/enabled
 </code></pre>
 
-<p>With the cluster resources online let's copy a simple webpage in place which will show us the hostname we are running on. On the node running the resources copy the file in place.</p>
-
-<pre><code class="language-none"># cp /root/index.php /var/www/html/index.php</code></pre>
 
 <p>Now let's move the resource group. We will come back to the message about location constraints.</p>
 
@@ -768,24 +770,24 @@ Ticket Constraints:
 
 <h4 id="toc_18">Stopping, starting & restarting Resources</h2>
 <p>The following commands stop, start and restart a resource.</p>
-<pre><code class="language-none"># pcs resource disable www_app
-# pcs resource enable www_app
-# pcs resource restart www_app
+<pre><code class="language-none"># pcs resource disable www_apache
+# pcs resource enable www_apache
+# pcs resource restart www_apache
 </code></pre>
 
 <h4 id="toc_18">Unmanaging resources</h4>
 <p>Sometimes it can be useful to be able to stop and start resources outside of the clusters control. Unmanaging a resource stops pcs from actively manaing a resource. The below example would allow us to stop httpd without the cluster taking any action.</p>
 
-<pre><code class="language-none"># pcs resource unmanage www_app
+<pre><code class="language-none"># pcs resource unmanage www_apache
 # systemctl stop httpd
-# pcs resource manage www_app
+# pcs resource manage www_apache
 </code></pre>
 
 <h3 id="toc_18">Managing Nodes</h2>
 
 <p>Sometimes we need to perform maintenance on nodes and need to either stop them from running resources or particular resources. Placing a node in standby stops it from running any resources.</p>
 
-<pre><code class="language-none"># pcs cluster standby nodea.example.com</code></pre>
+<pre><code class="language-none"># pcs cluster standby nodea-priv.example.com</code></pre>
 
 <p>pcs status will confirm the node is now in standby. If it was running the cluster resources they will have moved to another node.</p>
 
@@ -800,19 +802,19 @@ Last change: Thu May 31 15:11:05 2018 by root via cibadmin on nodea.example.com
 3 nodes configured
 7 resources configured
 
-Node nodea.example.com: standby
-Online: [ nodeb.example.com nodec.example.com ]
+Node nodea-priv.example.com: standby
+Online: [ nodeb-priv.example.com nodec-priv.example.com ]
 
 Full list of resources:
 
- nodea-fence	(stonith:fence_xvm):	Started nodeb.example.com
- nodeb-fence	(stonith:fence_xvm):	Started nodec.example.com
- nodec-fence	(stonith:fence_xvm):	Started nodeb.example.com
+ nodea-fence	(stonith:fence_xvm):	Started nodeb-priv.example.com
+ nodeb-fence	(stonith:fence_xvm):	Started nodec-priv.example.com
+ nodec-fence	(stonith:fence_xvm):	Started nodeb-priv.example.com
  Resource Group: webapp
-     ha_vg	(ocf::heartbeat:LVM):	Started nodec.example.com
-     www_filesystem	(ocf::heartbeat:Filesystem):	Started nodec.example.com
-     www_vip	(ocf::heartbeat:IPaddr2):	Started nodec.example.com
-     www_app	(systemd:httpd):	Starting nodec.example.com
+     ha_vg	(ocf::heartbeat:LVM):	Started nodec-priv.example.com
+     www_filesystem	(ocf::heartbeat:Filesystem):	Started nodec-priv.example.com
+     www_vip	(ocf::heartbeat:IPaddr2):	Started nodec-priv.example.com
+     www_app	(systemd:httpd):	Starting nodec-priv.example.com
 
 
 Daemon Status:
@@ -823,12 +825,12 @@ Daemon Status:
 
 <p>To enable the node to run resources again we need to unstandby it.</p>
 
-<pre><code class="language-none"># pcs cluster unstandby nodea.example.com</code></pre>
+<pre><code class="language-none"># pcs cluster unstandby nodea-priv.example.com</code></pre>
 
 <p>Banning a resource just prevents that resource from running on that node. This may be useful if you have multiple resource groups and only want to prevent one of them from running on a node.</p>
 
-<pre><code class="language-none"># pcs resource ban www_app nodec.example.com
-# pcs resource clear www_app
+<pre><code class="language-none"># pcs resource ban www_apache nodec-priv.example.com
+# pcs resource clear www_apache
 </code></pre>
 
 <h3 id="toc_18">Access pcsd Web UI</h2>
@@ -858,12 +860,6 @@ We should now be able to manage the cluster through the web ui. An example of th
 # firewall-cmd --add-service=http
 </code></pre>
 
-<p>On noded we need to discover the iscsi storage..</p>
-
-<pre><code class="language-none">noded # iscsiadm --mode discoverydb --type sendtargets --portal iscsi.example.com --discover
-noded # iscsiadm --mode node --targetname iqn.1994-05.com.redhat:iscsi-target --portal iscsi.example.com --login
-</code></pre>
-
 <p>Now configure LVM.</p>
 
 <pre><code class="language-none">noded # lvmconf --enable-halvm --services --startstopservices</code></pre>
@@ -876,6 +872,12 @@ noded # iscsiadm --mode node --targetname iqn.1994-05.com.redhat:iscsi-target --
 
 <pre><code class="language-none">noded # dracut -H -f /boot/initramfs-$(uname -r).img $(uname -r)
 noded # reboot
+</code></pre>
+
+<p>On noded we need to discover the iscsi storage..</p>
+
+<pre><code class="language-none">noded # iscsiadm --mode discoverydb --type sendtargets --portal iscsi.example.com --discover
+noded # iscsiadm --mode node --targetname iqn.1994-05.com.redhat:iscsi-target --portal iscsi.example.com --login
 </code></pre>
 
 <p>Now we can install the RHEL HA packages.</p>
@@ -912,7 +914,7 @@ noded # firewall-cmd --add-service=high-availability
 
 <p>Finally we can add the fencing device.</p>
 
-<pre><code class="language-none">nodea # pcs stonith create noded-fence fence_xvm pcmk_host_list="noded.example.com"</code></pre>
+<pre><code class="language-none">nodea # pcs stonith create noded-fence fence_xvm pcmk_host_map="noded-priv.example.com:noded.example.com"</code></pre>
 
 <h3 id="toc_18">Activating LVM outside of the cluster</h2>
 
@@ -939,3 +941,72 @@ nodea # mount /dev/ha_vg/ha_lv /var/www/html
 nodea # vgchange -an ha_vg
 nodea # vgchange --deltag pacemaker ha_vg
 </code></pre>
+
+<h2 id="toc_2">Testing</h2>
+
+<h3 id="toc_3">Offline and Online Resources</h3>
+
+<p>Attempt to offline and online a resource using either the pcs gui or via the cli. </p>
+
+<pre><code class="language-none">nodea # pcs resource disable www_app
+nodea # pcs resource enable www_app
+</code></pre>
+
+<h3 id="toc_3">Move resource group</h3>
+
+<p>Migrate the resource group to another node.</p>
+
+<pre><code class="language-none">nodea # pcs resource move webapp</code></pre>
+
+<h3 id="toc_3">Shutdown and start cluster</h3>
+
+<p>Stop cluster services on all nodes.</p>
+
+<pre><code class="language-none">nodea # pcs cluster stop --all</code></pre>
+
+<h3 id="toc_3">Stop resources outside of cluster</h3>
+
+<p>Place a resource in standby and then stop it outside of the cluster control.</p>
+
+<pre><code class="language-none">nodea # pcs resource standby www_app
+nodea # systemctl stop httpd
+</code></pre>
+
+<p>Unstandby the resource when finished.</p>
+<pre><code class="language-none">nodea # pcs resource unstandby www_app</code></pre>
+
+<h3 id="toc_3">Resource group failure testing</h3>
+
+<p>Try stopping the httpd service. You'll notice that the resource is restarted on the same node. This is the default behaviour with RHEL HA. We can tell the resource to failover to another node after X number of failures. Let's take a look at the failcount for the resource.</p>
+
+<pre><code class="language-none">nodea # crm_failcount -G -r www_apache
+scope=status  name=fail-count-www_apache value=1
+</code></pre>
+
+<p>First we can clear the failcount and then let's configure the cluster to move a failed resource after 1 failure.</p>
+
+<pre><code class="language-none">nodea # crm_failcount -G -r www_apache
+nodea # pcs resource defaults migration-threshold=1
+</code></pre>
+
+<p>Now if we stop httpd we should see the resource move to a different node. Clear the failcount when finished.</p>
+
+<pre><code class="language-none">nodea # crm_failcount -G -r www_apache</code></pre>
+
+<h3 id="toc_3">Crash cluster node</h3>
+
+<p>Identify the active node in the cluster and cause it to crash.</p>
+
+<pre><code class="language-none"># echo 1 > /proc/sys/kernel/sysrq
+# echo c > /proc/sysrq-trigger
+</code></pre>
+
+<h3 id="toc_3">Making resources non-critical</h3>
+
+<p>A resource can be marked as non critical to prevent a failover of the resource group.</p>
+
+<pre><code class="language-none">nodea # pcs resource update www_apache op monitor on-fail=ignore</code></pre>
+
+<p>Now if we stop apache we should see a message saying that the failure has been ignored.</p>
+
+<pre><code class="language-none"># systemctl stop httpd</code></pre>
