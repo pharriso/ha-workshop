@@ -341,7 +341,7 @@ sup {
 <td>Adding Nodes</td>
 </tr>
 <tr>
-<td>Active/Active resources</td>
+<td>Activating LVM outside of the cluster</td>
 </tr>
 </tbody>
 </table>
@@ -845,7 +845,29 @@ We should now be able to manage the cluster through the web ui. An example of th
 
 <h1 id="toc_17">Adding a node</h1>
 
-<p>The workflow is very similar to the steps we took when creating a new cluster. We will add noded to the cluster. Install the RHEL HA packages on noded.</p>
+<p>The workflow is very similar to the steps we took when creating a new cluster. We will add noded to the cluster.</p>
+
+<p>This time we will configure the storage first. On noded discover the iscsi storage..</p>
+
+<pre><code class="language-none">noded # iscsiadm --mode discoverydb --type sendtargets --portal iscsi.example.com --discover
+noded # iscsiadm --mode node --targetname iqn.1994-05.com.redhat:iscsi-target --portal iscsi.example.com --login
+</code></pre>
+
+<p>Now configure LVM.</p>
+
+<pre><code class="language-none">noded # lvmconf --enable-halvm --services --startstopservices</code></pre>
+
+<p>Edit /etc/lvm/lvm.conf and add the following line.</p>
+
+<pre><code class="language-none">volume_list = [ "rhel" ]</code></pre>
+
+<p>Rebuild the ramdisk and reboot.</p>
+
+<pre><code class="language-none">noded # dracut -H -f /boot/initramfs-$(uname -r).img $(uname -r)
+noded # reboot
+</code></pre>
+
+<p>Now we can install the RHEL HA packages.</p>
 
 <pre><code class="language-none">noded # yum install pcs pacemaker fence-agents-all</code></pre>
 
@@ -876,3 +898,33 @@ noded # firewall-cmd --add-service=high-availability
 <pre><code class="language-none">noded # pcs cluster start && pcs cluster enable</code></pre>
 
 <p>Verify the new node has been succesfully added with pcs status.</p>
+
+<p>Finally we can add the fencing device.</p>
+
+<pre><code class="language-none">nodea # pcs stonith create nodea-fence fence_xvm pcmk_host_list="noded.example.com"</code></pre>
+
+<h3 id="toc_18">Activating LVM outside of the cluster</h2>
+
+<p>It may be necessary to start the LVM volumes outside of the cluster control. First check that the volumegroup doesn't have any tags.</p>
+
+<pre><code class="language-none">nodea # vgs -o tags
+  VG Tags
+
+</code></pre>
+
+<p>Add a tag to the VG.</p>
+
+<pre><code class="language-none">nodea # vgchange --addtag pacemaker ha_vg</code></pre>
+
+<p>Now we can activate the volume group and mount the filesystem.</p>
+
+<pre><code class="language-none">nodea # vgchange -ay --config activation{volume_list=[\"@pacemaker\"]} ha_vg
+nodea # mount /dev/ha_vg/ha_lv /var/www/html
+</code></pre>
+
+<p>Once finished we can decactivate the volume group.</p>
+
+<pre><code class="language-none">nodea # umount /var/www/html
+nodea # vgchange -an ha_vg
+nodea # vgchange --deltag pacemaker ha_vg
+</code></pre>
