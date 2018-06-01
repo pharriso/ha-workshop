@@ -441,7 +441,7 @@ root</code></pre>
 
 <p>In one node, create and start a cluster called cluster1 consisting of our 3 nodes.</p>
 
-<pre><code class="language-none">nodea # pcs cluster setup --start --enable --name cluster1 nodea-priva.demolab.local nodeb-priv.demolab.local nodec-priv.demolab.local</code></pre>
+<pre><code class="language-none">nodea # pcs cluster setup --start --enable --name cluster1 nodea-priva.example.com nodeb-priv.example.com nodec-priv.example.com</code></pre>
 
 <p>Verify our cluster has been created succesfully.</p>
 
@@ -449,14 +449,14 @@ root</code></pre>
 Cluster name: cluster1
 WARNING: no stonith devices and stonith-enabled is not false
 Stack: corosync
-Current DC: nodea.demolab.local (version 1.1.18-11.el7_5.2-2b07d5c5a9) - partition with quorum
+Current DC: nodea.example.com (version 1.1.18-11.el7_5.2-2b07d5c5a9) - partition with quorum
 Last updated: Thu May 24 10:31:22 2018
-Last change: Thu May 24 10:29:00 2018 by hacluster via crmd on nodea.demolab.local
+Last change: Thu May 24 10:29:00 2018 by hacluster via crmd on nodea.example.com
 
 3 nodes configured
 0 resources configured
 
-Online: [ nodea.demolab.local nodeb.demolab.local nodec.demolab.local ]
+Online: [ nodea.example.com nodeb.example.com nodec.example.com ]
 
 No resources
 
@@ -543,35 +543,35 @@ nodea # pcs stonith create nodec-fence fence_xvm pcmk_host_list="nodec.example.c
 <p>We can confirm the fencing resources are working by running pcs status or pcs stonith.</p>
 
 <pre><code class="language-none">nodea # pcs stonith
- nodea-fence	(stonith:fence_xvm):	Started nodea.demolab.local
- nodeb-fence	(stonith:fence_xvm):	Started nodec.demolab.local
- nodec-fence	(stonith:fence_xvm):	Started nodeb.demolab.local
+ nodea-fence	(stonith:fence_xvm):	Started nodea.example.com
+ nodeb-fence	(stonith:fence_xvm):	Started nodec.example.com
+ nodec-fence	(stonith:fence_xvm):	Started nodeb.example.com
 </code></pre>
 
 <p>Finally, let's test the fencing agent.</p>
 
-<pre><code class="language-none">nodea # pcs stonith fence nodeb.demolab.local</code></pre>
+<pre><code class="language-none">nodea # pcs stonith fence nodeb.example.com</code></pre>
 
 <p>Once the command prompt comes back we confirm the node has restarted. As these are virtual machines they restart quickly so we can follow the restart easily using watch.</p>
 
 <pre><code class="language-none">nodea # watch pcs status 
 Cluster name: cluster1
 Stack: corosync
-Current DC: nodea.demolab.local (version 1.1.18-11.el7_5.2-2b07d5c5a9) - partition with quorum
+Current DC: nodea.example.com (version 1.1.18-11.el7_5.2-2b07d5c5a9) - partition with quorum
 Last updated: Thu May 24 11:55:10 2018
-Last change: Thu May 24 11:39:20 2018 by hacluster via crmd on nodeb.demolab.local
+Last change: Thu May 24 11:39:20 2018 by hacluster via crmd on nodeb.example.com
 
 3 nodes configured
 3 resources configured
 
-Online: [ nodea.demolab.local nodec.demolab.local ]
-OFFLINE: [ nodeb.demolab.local ]
+Online: [ nodea.example.com nodec.example.com ]
+OFFLINE: [ nodeb.example.com ]
 
 Full list of resources:
 
- nodea-fence	(stonith:fence_xvm):	Started nodea.demolab.local
- nodeb-fence	(stonith:fence_xvm):	Started nodec.demolab.local
- nodec-fence	(stonith:fence_xvm):	Started nodea.demolab.local
+ nodea-fence	(stonith:fence_xvm):	Started nodea.example.com
+ nodeb-fence	(stonith:fence_xvm):	Started nodec.example.com
+ nodec-fence	(stonith:fence_xvm):	Started nodea.example.com
 
 Daemon Status:
   corosync: active/enabled
@@ -636,7 +636,7 @@ nodea # mkfs.xfs /dev/ha_vg/ha_lv
 
 <p>Now let's install apache on all nodes and enable http traffic through the firewall.</p>
 
-<pre><code class="language-none"># yum -y install httpd
+<pre><code class="language-none"># yum -y install httpd php
 # firewall-cmd --add-service=http --permanent
 # firewall-cmd --add-service=http
 </code></pre>
@@ -698,11 +698,11 @@ Default operations:
 
 <p>The next resource we will add will be the virtual IP.</p>
 
-<pre><code class="language-none"># pcs resource create www_vip IPaddr2 ip=10.50.0.57 --group webapp</code></pre>
+<pre><code class="language-none"># pcs resource create www_vip IPaddr2 ip=192.168.122.15 --group webapp</code></pre>
 
 <p>The final resource we need is apache.</p>
 
-<pre><code class="language-none"># pcs resource create www_app apache configfile=/etc/httpd/conf/httpd.conf --group webapp</code></pre>
+<pre><code class="language-none"># pcs resource create www_app systemd:httpd --group webapp</code></pre>
 
 <p>We should now be able to access our website on it's virtual IP address.</p>
 
@@ -713,25 +713,25 @@ Default operations:
 <pre><code class="language-none"># pcs status
 Cluster name: cluster1
 Stack: corosync
-Current DC: nodea.demolab.local (version 1.1.18-11.el7_5.2-2b07d5c5a9) - partition with quorum
+Current DC: nodea.example.com (version 1.1.18-11.el7_5.2-2b07d5c5a9) - partition with quorum
 Last updated: Mon May 28 21:19:29 2018
-Last change: Mon May 28 21:15:54 2018 by root via crm_resource on nodea.demolab.local
+Last change: Mon May 28 21:15:54 2018 by root via crm_resource on nodea.example.com
 
 3 nodes configured
 7 resources configured
 
-Online: [ nodea.demolab.local nodeb.demolab.local nodec.demolab.local ]
+Online: [ nodea.example.com nodeb.example.com nodec.example.com ]
 
 Full list of resources:
 
- nodea-fence	(stonith:fence_xvm):	Started nodea.demolab.local
- nodeb-fence	(stonith:fence_xvm):	Started nodec.demolab.local
- nodec-fence	(stonith:fence_xvm):	Started nodeb.demolab.local
+ nodea-fence	(stonith:fence_xvm):	Started nodea.example.com
+ nodeb-fence	(stonith:fence_xvm):	Started nodec.example.com
+ nodec-fence	(stonith:fence_xvm):	Started nodeb.example.com
  Resource Group: webapp
-     ha_vg	(ocf::heartbeat:LVM):	Started nodea.demolab.local
-     www_filesystem	(ocf::heartbeat:Filesystem):	Started nodea.demolab.local
-     www_vip	(ocf::heartbeat:IPaddr2):	Started nodea.demolab.local
-     www_app	(ocf::heartbeat:apache):	Started nodea.demolab.local
+     ha_vg	(ocf::heartbeat:LVM):	Started nodea.example.com
+     www_filesystem	(ocf::heartbeat:Filesystem):	Started nodea.example.com
+     www_vip	(ocf::heartbeat:IPaddr2):	Started nodea.example.com
+     www_app	(ocf::heartbeat:apache):	Started nodea.example.com
 
 Daemon Status:
   corosync: active/enabled
@@ -739,11 +739,15 @@ Daemon Status:
   pcsd: active/enabled
 </code></pre>
 
+<p>With the cluster resources online let's copy a simple webpage in place which will show us the hostname we are running on. On the node running the resources copy the file in place.</p>
+
+<pre><code class="language-none"># cp /root/index.php /var/www/html/index.php</code></pre>
+
 <p>Now let's move the resource group. We will come back to the message about location constraints.</p>
 
 <pre><code class="language-none"># pcs resource move webapp
-Warning: Creating location constraint cli-ban-webapp-on-nodea.demolab.local with a score of -INFINITY for resource webapp on node nodea.demolab.local.
-This will prevent webapp from running on nodea.demolab.local until the constraint is removed. This will be the case even if nodea.demolab.local is the last node in the cluster.
+Warning: Creating location constraint cli-ban-webapp-on-nodea.example.com with a score of -INFINITY for resource webapp on node nodea.example.com.
+This will prevent webapp from running on nodea.example.com until the constraint is removed. This will be the case even if nodea.example.com is the last node in the cluster.
 </code></pre>
 
 <p>Now check if the resources are running on a different node.</p>
@@ -753,7 +757,7 @@ This will prevent webapp from running on nodea.demolab.local until the constrain
 <pre><code class="language-none"># pcs constraint
 Location Constraints:
   Resource: webapp
-    Disabled on: nodea.demolab.local (score:-INFINITY) (role: Started)
+    Disabled on: nodea.example.com (score:-INFINITY) (role: Started)
 Ordering Constraints:
 Colocation Constraints:
 Ticket Constraints:
@@ -789,26 +793,26 @@ Ticket Constraints:
 <pre><code class="language-none"># pcs status
 Cluster name: cluster1
 Stack: corosync
-Current DC: nodea.demolab.local (version 1.1.18-11.el7_5.2-2b07d5c5a9) - partition with quorum
+Current DC: nodea.example.com (version 1.1.18-11.el7_5.2-2b07d5c5a9) - partition with quorum
 Last updated: Thu May 31 15:11:14 2018
-Last change: Thu May 31 15:11:05 2018 by root via cibadmin on nodea.demolab.local
+Last change: Thu May 31 15:11:05 2018 by root via cibadmin on nodea.example.com
 
 3 nodes configured
 7 resources configured
 
-Node nodea.demolab.local: standby
-Online: [ nodeb.demolab.local nodec.demolab.local ]
+Node nodea.example.com: standby
+Online: [ nodeb.example.com nodec.example.com ]
 
 Full list of resources:
 
- nodea-fence	(stonith:fence_xvm):	Started nodeb.demolab.local
- nodeb-fence	(stonith:fence_xvm):	Started nodec.demolab.local
- nodec-fence	(stonith:fence_xvm):	Started nodeb.demolab.local
+ nodea-fence	(stonith:fence_xvm):	Started nodeb.example.com
+ nodeb-fence	(stonith:fence_xvm):	Started nodec.example.com
+ nodec-fence	(stonith:fence_xvm):	Started nodeb.example.com
  Resource Group: webapp
-     ha_vg	(ocf::heartbeat:LVM):	Started nodec.demolab.local
-     www_filesystem	(ocf::heartbeat:Filesystem):	Started nodec.demolab.local
-     www_vip	(ocf::heartbeat:IPaddr2):	Started nodec.demolab.local
-     www_app	(systemd:httpd):	Starting nodec.demolab.local
+     ha_vg	(ocf::heartbeat:LVM):	Started nodec.example.com
+     www_filesystem	(ocf::heartbeat:Filesystem):	Started nodec.example.com
+     www_vip	(ocf::heartbeat:IPaddr2):	Started nodec.example.com
+     www_app	(systemd:httpd):	Starting nodec.example.com
 
 
 Daemon Status:
@@ -847,7 +851,14 @@ We should now be able to manage the cluster through the web ui. An example of th
 
 <p>The workflow is very similar to the steps we took when creating a new cluster. We will add noded to the cluster.</p>
 
-<p>This time we will configure the storage first. On noded discover the iscsi storage..</p>
+<p>This time we'll start by installing apache on noded and allowing http traffic through the firewall.</p>
+
+<pre><code class="language-none">noded # yum -y install httpd php
+# firewall-cmd --add-service=http --permanent
+# firewall-cmd --add-service=http
+</code></pre>
+
+<p>On noded we need to discover the iscsi storage..</p>
 
 <pre><code class="language-none">noded # iscsiadm --mode discoverydb --type sendtargets --portal iscsi.example.com --discover
 noded # iscsiadm --mode node --targetname iqn.1994-05.com.redhat:iscsi-target --portal iscsi.example.com --login
@@ -901,7 +912,7 @@ noded # firewall-cmd --add-service=high-availability
 
 <p>Finally we can add the fencing device.</p>
 
-<pre><code class="language-none">nodea # pcs stonith create nodea-fence fence_xvm pcmk_host_list="noded.example.com"</code></pre>
+<pre><code class="language-none">nodea # pcs stonith create noded-fence fence_xvm pcmk_host_list="noded.example.com"</code></pre>
 
 <h3 id="toc_18">Activating LVM outside of the cluster</h2>
 
