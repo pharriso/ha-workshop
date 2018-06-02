@@ -595,8 +595,8 @@ Daemon Status:
 
 <p>First we need to discover the iSCSI targets and the login. We need to do this on all nodes.</p>
 
-<pre><code class="language-none"># iscsiadm --mode discoverydb --type sendtargets --portal iscsi.example.com --discover
-# iscsiadm --mode node --targetname iqn.1994-05.com.redhat:iscsi-target --portal iscsi.example.com --login
+<pre><code class="language-none"># iscsiadm --mode discoverydb --type sendtargets --portal iscsi-storage.example.com --discover
+# iscsiadm --mode node --targetname iqn.1994-05.com.redhat:iscsi-target --portal iscsi-storage.example.com --login
 </code></pre>
 
 <p>dmesg should confirm we have discovered a disk - sda</p>
@@ -833,6 +833,8 @@ Daemon Status:
 # pcs resource clear www_apache
 </code></pre>
 
+<h3 id="toc_18">Node preference and resource stickiness</h2>
+
 <h3 id="toc_18">Access pcsd Web UI</h2>
 
 <p>The pcs Web UI can be accessed on any of the nodes. For example, browse to https://nodea.example.com:2224 and login with the hacluster credentials we setup when we installed the cluster.</p>
@@ -876,8 +878,8 @@ noded # reboot
 
 <p>On noded we need to discover the iscsi storage..</p>
 
-<pre><code class="language-none">noded # iscsiadm --mode discoverydb --type sendtargets --portal iscsi.example.com --discover
-noded # iscsiadm --mode node --targetname iqn.1994-05.com.redhat:iscsi-target --portal iscsi.example.com --login
+<pre><code class="language-none">noded # iscsiadm --mode discoverydb --type sendtargets --portal iscsi-storage.example.com --discover
+noded # iscsiadm --mode node --targetname iqn.1994-05.com.redhat:iscsi-target --portal iscsi-storage.example.com --login
 </code></pre>
 
 <p>Now we can install the RHEL HA packages.</p>
