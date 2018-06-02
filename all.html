@@ -335,6 +335,9 @@ sup {
 <td>Create and Manage Cluster Resources</td>
 </tr>
 <tr>
+<td>Node preference and resource stickiness</td>
+</tr>
+<tr>
 <td>Access pcsd Web UI</td>
 </tr>
 <tr>
@@ -835,6 +838,28 @@ Daemon Status:
 
 <h3 id="toc_18">Node preference and resource stickiness</h2>
 
+<p>A preferred node can be set for resources to ensure it always runs on that particular node. Let's make nodea our preferred node by giving it a score of 200. This is how much we want it to run on that node. On it's own that number doesn't mean a lot but we'll come back to that later.</p>
+
+<pre><code class="language-none">nodea # pcs constraint location webapp prefers nodea-priv.example.com=200</code></pre>
+
+<p>Now if we put nodea into standby the resource group will move to another cluster member. If we then unstandby it we'll should see the resource group move back to nodea.</p>
+
+<pre><code class="language-none">nodea # pcs cluster standby nodea-priv.example.com
+pcs cluster unstandby nodea-priv.example.com
+</code></pre>
+
+<p>The fact that the resource has moved back when it is in a perfectly healthy state may not be desireable. This causes unnecessary downtime for our application. This is where resource stickiness comes into play. This allows us to say how much we want our resource to stay where it currently is. If the score is higher than the score we gave to our preferred node then the resource should stay where it is.</p>
+
+<p>Let's set our resource stickiness.</p>
+
+<pre><code class="language-none">nodea # pcs resource defaults resource-stickiness=500</code></pre>
+
+<p>Now let's repeat our test. The resource group should stay where it is.</p>
+
+<pre><code class="language-none">nodea # pcs cluster standby nodea-priv.example.com
+pcs cluster unstandby nodea-priv.example.com
+</code></pre>
+
 <h3 id="toc_18">Access pcsd Web UI</h2>
 
 <p>The pcs Web UI can be accessed on any of the nodes. For example, browse to https://nodea.example.com:2224 and login with the hacluster credentials we setup when we installed the cluster.</p>
@@ -920,7 +945,11 @@ noded # firewall-cmd --add-service=high-availability
 
 <h3 id="toc_18">Activating LVM outside of the cluster</h2>
 
-<p>It may be necessary to start the LVM volumes outside of the cluster control. First check that the volumegroup doesn't have any tags.</p>
+<p>It may be necessary to start the LVM volumes outside of the cluster control. Let's stop the resource group.</p>
+
+<pre><code class="language-none">nodea # pcs resource disable webapp</code></pre>
+
+<p>Now check that the volumegroup doesn't have any tags.</p>
 
 <pre><code class="language-none">nodea # vgs -o tags
   VG Tags
@@ -937,11 +966,12 @@ noded # firewall-cmd --add-service=high-availability
 nodea # mount /dev/ha_vg/ha_lv /var/www/html
 </code></pre>
 
-<p>Once finished we can decactivate the volume group.</p>
+<p>Once finished we can decactivate the volume group and restart the resource group.</p>
 
 <pre><code class="language-none">nodea # umount /var/www/html
 nodea # vgchange -an ha_vg
 nodea # vgchange --deltag pacemaker ha_vg
+nodea # pcs resource enable webapp
 </code></pre>
 
 <h2 id="toc_2">Testing</h2>
@@ -966,6 +996,10 @@ nodea # pcs resource enable www_app
 
 <pre><code class="language-none">nodea # pcs cluster stop --all</code></pre>
 
+<p>Stop cluster services on all nodes.</p>
+
+<pre><code class="language-none">nodea # pcs cluster start --all</code></pre>
+
 <h3 id="toc_3">Stop resources outside of cluster</h3>
 
 <p>Place a resource in standby and then stop it outside of the cluster control.</p>
@@ -979,7 +1013,7 @@ nodea # systemctl stop httpd
 
 <h3 id="toc_3">Resource group failure testing</h3>
 
-<p>Try stopping the httpd service. You'll notice that the resource is restarted on the same node. This is the default behaviour with RHEL HA. We can tell the resource to failover to another node after X number of failures. Let's take a look at the failcount for the resource.</p>
+<p>Try stopping the httpd service with - systemctl stop httpd - You'll notice that the resource is restarted on the same node. This is the default behaviour with RHEL HA. We can tell the resource to failover to another node after X number of failures. Let's take a look at the failcount for the resource.</p>
 
 <pre><code class="language-none">nodea # crm_failcount -G -r www_apache
 scope=status  name=fail-count-www_apache value=1
@@ -987,13 +1021,13 @@ scope=status  name=fail-count-www_apache value=1
 
 <p>First we can clear the failcount and then let's configure the cluster to move a failed resource after 1 failure.</p>
 
-<pre><code class="language-none">nodea # crm_failcount -G -r www_apache
+<pre><code class="language-none">nodea # crm_failcount -D -r www_apache
 nodea # pcs resource defaults migration-threshold=1
 </code></pre>
 
 <p>Now if we stop httpd we should see the resource move to a different node. Clear the failcount when finished.</p>
 
-<pre><code class="language-none">nodea # crm_failcount -G -r www_apache</code></pre>
+<pre><code class="language-none">nodea # crm_failcount -D -r www_apache</code></pre>
 
 <h3 id="toc_3">Crash cluster node</h3>
 
