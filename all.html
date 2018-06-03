@@ -1158,15 +1158,15 @@ nodea # lvcreate -L5G -n cluster_lv cluster_vg
 <p>Now we can add the gfs2 filesystem as a resource to our cluster. Again, we need to create some resource constraints to configure ordering and co-location.</p>
 
 <pre><code class="language-none">nodea # pcs resource create www_gfs2 Filesystem device="/dev/cluster_vg/cluster_lv" directory="/var/www/html" fstype="gfs2" "options=noatime" op monitor interval=10s on-fail=fence clone interleave=true
-nodea # pcs constraint order start clvmd-clone then clusterfs-clone
-nodea # pcs constraint colocation add clusterfs-clone with clvmd-clone
+nodea # pcs constraint order start clvmd-clone then www_gfs2-clone
+nodea # pcs constraint colocation add www_gfs2-clone with clvmd-clone
 </code></pre>
 
 <p>We can create an apache resource to serve some content from our shared filesystem. Note we are using the clone option. Once again, we are also creating constraints.</p>
 
 <pre><code class="language-none">nodea # pcs resource create apache systemd:httpd clone interleave=true ordered=true
-nodea # pcs constraint order start clusterfs-clone then apache-clone
-nodea # pcs constraint colocation add apache-clone with clusterfs-clone</code></pre>
+nodea # pcs constraint order start www_gfs2-clone then apache-clone
+nodea # pcs constraint colocation add apache-clone with www_gfs2-clone</code></pre>
 
 <p>Now on <strong>nodea</strong> let's echo something into /var/www/html/index.html so that we can see all 3 nodes serving the same content.</p>
 
