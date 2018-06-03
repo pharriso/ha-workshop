@@ -460,7 +460,7 @@ When Pacemaker determines that a node has failed, it communicates to other clust
 
 <h2 id="toc_18">Create a basic cluster</h2>
 
-<p>We are going to create a 3 node cluster comprising of <strong>nodea</strong>, <strong>nodeb</strong> and <strong>nodec</strong>. Start by install the RHEL HA packages on <strong>each node</strong>.</p>
+<p>We are going to create a 3 node cluster comprising of <strong>nodea</strong>, <strong>nodeb</strong> and <strong>nodec</strong>. Start by installing the RHEL HA packages on <strong>each node</strong>.</p>
 
 <pre><code class="language-none"># yum install pcs pacemaker fence-agents-all</code></pre>
 
@@ -626,7 +626,7 @@ Daemon Status:
 
 <h2 id="toc_18">Prepare Cluster Resources</h2>
 
-<p>We are going to configure a basic resource group which consists of the following:</p>
+<p>We are going to configure a basic resource group which consists of the following.</p>
 
 <ol>
 <li>HA-LVM<br><br></li>
@@ -635,9 +635,11 @@ Daemon Status:
 <li>Virtual IP<br><br></li>
 </ol>
 
+<p>We need to prepare these resources before we can add them to the cluster.</p>
+
 <h3 id="toc_18">LVM and Filesystem</h2>
 
-<p>First we need to discover the iSCSI targets and the login. We need to do this on <strong>all nodes</strong>.</p>
+<p>First we need to discover the iSCSI targets and then login. We need to do this on <strong>all nodes</strong>.</p>
 
 <pre><code class="language-none"># iscsiadm --mode discoverydb --type sendtargets --portal iscsi-storage.example.com --discover
 # iscsiadm --mode node --targetname iqn.1994-05.com.redhat:iscsi-target --portal iscsi-storage.example.com --login
@@ -730,7 +732,7 @@ Default operations:
 <li>Apache Web server<br><br></li>
 <li>Virtual IP<br><br></li>
 </ol>
-<p>Resources added to a resource group and started in the order they are added. First let's add the HA-LVM resource to activate the volume group.</p>
+<p>Resources added to a resource group are started in the order they are added. First let's add the HA-LVM resource to activate the volume group.</p>
 
 <pre><code class="language-none">nodea # pcs resource create www_vg LVM volgrpname=ha_vg exclusive=true --group webapp</code></pre>
 
@@ -878,11 +880,11 @@ Daemon Status:
 
 <h3 id="toc_18">Node preference and resource stickiness</h2>
 
-<p>A preferred node can be set for resources to ensure it always runs on that particular node. Let's make nodea our preferred node by giving it a score of 200. This is how much we want it to run on that node. On it's own that number doesn't mean a lot but we'll come back to that later.</p>
+<p>A preferred node can be set for resources to ensure it always runs on that particular node. Let's make <strong>nodea</strong> our preferred node by giving it a score of 200. This is how much we want it to run on that node. On it's own that number doesn't mean a lot but we'll come back to that later.</p>
 
 <pre><code class="language-none">nodea # pcs constraint location webapp prefers nodea-priv.example.com=200</code></pre>
 
-<p>Now if we put nodea into standby the resource group will move to another cluster member. If we then unstandby it we'll should see the resource group move back to nodea.</p>
+<p>Now if we put <strong>nodea</strong> into standby the resource group will move to another cluster member. If we then unstandby it we should see the resource group move back to nodea.</p>
 
 <pre><code class="language-none">nodea # pcs cluster standby nodea-priv.example.com
 nodea # pcs cluster unstandby nodea-priv.example.com
@@ -965,11 +967,11 @@ noded # firewall-cmd --add-service=high-availability
 
 <pre><code class="language-none">noded # systemctl enable pcsd && systemctl start pcsd </code></pre>
 
-<p>One an existing node, authenticate the pcs admin user against the new node (noded in our example).</p>
+<p>On an existing node, authenticate the pcs admin user against the new node (noded in our example).</p>
 
 <pre><code class="language-none">nodea # pcs cluster auth noded-priv.example.com</code></pre>
 
-<p>In an existing node, add noded to the cluster.</p>
+<p>On an existing node, add noded to the cluster.</p>
 
 <pre><code class="language-none">nodea # pcs cluster node add noded-priv.example.com</code></pre>
 
