@@ -568,7 +568,9 @@ Default operations:
   monitor: interval=60s
 </code></pre>
 
-<p>We are using KVM virtualisation so we will use the virtual machine fencing agent. This agent talks back to the hypervisor to power machines on/off. First let's check that we can see all of the available VM's</p>
+<h3 id="toc_3">Libvirt Fencing</h3>
+
+<p>If you are using KVM virtualisation we will use the fence_xvm fencing agent. This agent talks back to the hypervisor to power machines on/off. First let's check that we can see all of the available VM's</p>
 
 <pre><code class="language-none">nodea # fence_xvm -o list
 nodea.example.com              e3d38597-e90c-4bfb-b1d2-144c4ef615b5 on
@@ -590,6 +592,32 @@ nodea # pcs stonith create nodec-fence fence_xvm pcmk_host_map="nodec-priv.examp
  nodeb-fence	(stonith:fence_xvm):	Started nodec-priv.example.com
  nodec-fence	(stonith:fence_xvm):	Started nodeb-priv.example.com
 </code></pre>
+
+<h3 id="toc_3">RHV-M Fencing</h3>
+
+<p>For RHV VM's we can use the fence_rhvm agent. This talks to the RHV Manager API to power cycle the cluster nodes. We can check that we can talk to the RHV API and see our vm's.</p>
+
+<pre><code class="language-none">nodea # fence_rhevm -a rhv-m.example.com -l 'admin@internal' -p 'Redhat123' -z -o list --ssl-insecure --login-timeout=30 --disable-http-filter | grep node
+nodeb.example.com,
+nodea.example.com,
+nodec.example.com,
+</code></pre>
+
+<pre><code class="language-none">nodea # pcs stonith create nodea-fence fence_rhevm ipaddr=rhvm.exmaple.com login='admin@internal' passwd='Redhat123' pcmk_host_map=nodea-priv.example.com:nodea.exmaple.com disable_http_filter=1 ssl_insecure=1 ssl=1
+nodea # pcs stonith create nodeb-fence fence_rhevm ipaddr=rhvm.exmaple.com login='admin@internal' passwd='Redhat123' pcmk_host_map=nodeb-priv.example.com:nodeb.exmaple.com disable_http_filter=1 ssl_insecure=1 ssl=1
+nodea # pcs stonith create nodec-fence fence_rhevm ipaddr=rhvm.exmaple.com login='admin@internal' passwd='Redhat123' pcmk_host_map=nodec-priv.example.com:nodec.exmaple.com disable_http_filter=1 ssl_insecure=1 ssl=1
+</code></pre>
+</p>
+
+<p>We can confirm the fencing resources are working by running pcs status or pcs stonith.</p>
+
+<pre><code class="language-none">nodea # pcs stonith
+ nodea-fence	(stonith:fence_rhevm):	Started nodea-priv.example.com
+ nodeb-fence	(stonith:fence_rhevm):	Started nodec-priv.example.com
+ nodec-fence	(stonith:fence_rhevm):	Started nodeb-priv.example.com
+</code></pre>
+
+<h3 id="toc_3">Test Fencing</h3>
 
 <p>Finally, let's test the fencing agent.</p>
 
@@ -637,13 +665,20 @@ Daemon Status:
 
 <p>We need to prepare these resources before we can add them to the cluster.</p>
 
-<h3 id="toc_18">LVM and Filesystem</h2>
+<h3 id="toc_18">iSCSI configuration</h2>
 
-<p>First we need to discover the iSCSI targets and then login. We need to do this on <strong>all nodes</strong>.</p>
+<p>NOTE: This is not required if we are deploying on RHV. 
+First we need to discover the iSCSI targets and then login. We need to do this on <strong>all nodes</strong>.</p>
 
 <pre><code class="language-none"># iscsiadm --mode discoverydb --type sendtargets --portal iscsi-storage.example.com --discover
 # iscsiadm --mode node --targetname iqn.1994-05.com.redhat:iscsi-target --portal iscsi-storage.example.com --login
 </code></pre>
+
+<h3 id="toc_18">RHV Shared Storage</h2>
+
+<p>For RHV environments we can create a shared virtual disk and add this to each node.</p>
+
+<h3 id="toc_18">Confirm storage is visible</h2>
 
 <p>dmesg should confirm we have discovered a disk - sda</p>
 
@@ -653,6 +688,8 @@ Daemon Status:
 [378055.438579] sd 2:0:0:0: [sda] Mode Sense: 43 00 10 08
 [378055.438685] sd 2:0:0:0: [sda] Write cache: enabled, read cache: enabled, supports DPO and FUA
 [378055.444792] sd 2:0:0:0: [sda] Attached SCSI disk</code></pre>
+
+<h3 id="toc_18">LVM and Filesystem</h2>
 
 <p>On <strong>nodea</strong> let's configure the LVM volume.</p>
 
@@ -748,7 +785,21 @@ Default operations:
 
 <pre><code class="language-none">nodea # pcs resource create www_apache systemd:httpd --group webapp</code></pre>
 
-<p>With the cluster resources online let's copy a simple webpage in place which will show us the hostname we are running on. On the node running the resources copy the file in place and restore selinux contexts.</p>
+<p>With the cluster resources online let's create a simple webpage in place which will show us the hostname we are running on. On the node running the resources create the file /var/www/html/index.php with the following contents.</p>
+
+<pre><code class="language-none">&lt;!DOCTYPE html>
+&lt;html>
+&lt;body>
+
+&lt;?php
+echo gethostname();
+?>
+
+&lt;/body>
+&lt;/html>
+</code></pre>
+
+<p>Set SELinux contexts.</p>
 
 <pre><code class="language-none">nodea # cp /root/index.php /var/www/html/index.php
 nodea # restorecon -Rv /var/www/html/
@@ -943,7 +994,7 @@ noded # firewall-cmd --add-service=http
 noded # reboot
 </code></pre>
 
-<p>On noded we need to discover the iscsi storage..</p>
+<p>On noded we need to add the storage. If this is a RHV environment then add the shared disk to the node. For an environment using iscsi then run the following commands.</p>
 
 <pre><code class="language-none">noded # iscsiadm --mode discoverydb --type sendtargets --portal iscsi-storage.example.com --discover
 noded # iscsiadm --mode node --targetname iqn.1994-05.com.redhat:iscsi-target --portal iscsi-storage.example.com --login
