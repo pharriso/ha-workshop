@@ -1097,12 +1097,12 @@ nodea # pcs resource enable www_app
 
 <p>Place a resource in standby and then stop it outside of the cluster control.</p>
 
-<pre><code class="language-none">nodea # pcs resource standby www_app
+<pre><code class="language-none">nodea # pcs resource unmanage www_app
 nodea # systemctl stop httpd
 </code></pre>
 
 <p>Unstandby the resource when finished.</p>
-<pre><code class="language-none">nodea # pcs resource unstandby www_app</code></pre>
+<pre><code class="language-none">nodea # pcs resource manage www_app</code></pre>
 
 <h3 id="toc_3">Resource group failure testing</h3>
 
