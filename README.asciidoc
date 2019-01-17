@@ -1,0 +1,116 @@
+= ha-workshop
+
+== Workshop Agenda
+
+== Labs Overview
+
+image::images/RHEL_HA_Networks.png[]
+
+== Principles and Conventions of the Labs
+
+*Code Entry*
+
+Many of the labs will expect you to type commands into the CLI over a secure shell connection to a set of hosts provided. Each command entry will be highlighted, and where necessary the node we're expecting you to use will be identified. However, for clarity the conventions are identified below.
+
+This is a command entry box:
+
+....
+# uname -a
+Linux s01.fab.redhat.com 2.6.32-504.16.2.el6.x86_64 #1 SMP Tue Mar 10 17:01:00 EDT 2015 x86_64 x86_64 x86_64 GNU/Linux
+....
+
+Any commands that we expect you to run on a particular node will start with the node name and then a hash (nodea #), for example:
+
+....
+nodea # whoami
+root
+....
+
+== RHEL HA Overview
+
+=== Corosync
+
+Corosync is the framework used by Pacemaker for handling communication between the cluster nodes. Corosync is also Pacemaker’s source of membership and quorum data.
+
+=== Pacemaker
+
+This is the component responsible for all cluster-related activities, such as monitoring cluster membership, managing the services and resources, and fencing cluster members.
+
+=== Fencing
+
+Fencing is the disconnection of a node from the cluster's shared storage. Fencing cuts off I/O from shared storage, thus ensuring data integrity. The cluster infrastructure performs fencing through the STONITH facility. When Pacemaker determines that a node has failed, it communicates to other cluster-infrastructure components that the node has failed. STONITH fences the failed node when notified of the failure.
+
+=== Quorum
+
+In order to maintain cluster integrity and availability, cluster systems use a concept known as quorum to prevent data corruption and loss. A cluster has quorum when more than half of the cluster nodes are online. To mitigate the chance of data corruption due to failure, Pacemaker by default stops all resources if the cluster does not have quorum.
+
+== Install and Configure
+
+=== Create a basic cluster
+
+We are going to create a 3 node cluster comprising of *nodea, nodeb and nodec*. Start by installing the RHEL HA packages on *each node*.
+
+....
+# yum install pcs pacemaker fence-agents-all
+....
+
+Enable cluster communications through the firewall on *each node*.
+
+....
+# firewall-cmd --permanent --add-service=high-availability
+# firewall-cmd --add-service=high-availability
+....
+
+Set password for the pcs administration account on *all nodes*.
+
+....
+# echo Redhat123 | passwd --stdin hacluster
+....
+
+Start and enable the pcs daemon on *each node*.
+
+....
+# systemctl enable pcsd && systemctl start pcsd 
+....
+
+On *nodea*, authenticate the pcs admin user against each node in the cluster.
+
+....
+nodea # pcs cluster auth nodea-priv.example.com nodeb-priv.example.com nodec-priv.example.com
+....
+
+On *nodea*, create and start a cluster called cluster1 consisting of our 3 nodes.
+
+....
+nodea # pcs cluster setup --start --enable --name cluster1 nodea-priv.example.com nodeb-priv.example.com nodec-priv.example.com
+....
+
+Verify our cluster has been created succesfully.
+
+....
+nodea # pcs status
+Cluster name: cluster1
+WARNING: no stonith devices and stonith-enabled is not false
+Stack: corosync
+Current DC: nodea.example.com (version 1.1.18-11.el7_5.2-2b07d5c5a9) - partition with quorum
+Last updated: Thu May 24 10:31:22 2018
+Last change: Thu May 24 10:29:00 2018 by hacluster via crmd on nodea.example.com
+
+3 nodes configured
+0 resources configured
+
+Online: [ nodea-priv.example.com nodeb-priv.example.com nodec-priv.example.com ]
+
+No resources
+
+
+Daemon Status:
+  corosync: active/enabled
+  pacemaker: active/enabled
+  pcsd: active/enabled
+....
+
+Note the warning in the output telling us we haven't enabled fencing. We'll fix that next.
+
+== Configure Fencing
+
