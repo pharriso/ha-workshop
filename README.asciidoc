@@ -743,3 +743,97 @@ nodea # vgchange -an ha_vg
 nodea # vgchange --deltag pacemaker ha_vg
 nodea # pcs resource enable webapp
 ....
+
+== Testing
+
+=== Offline and Online Resources
+
+Attempt to offline and online a resource using either the pcs gui or via the cli.
+
+....
+nodea # pcs resource disable www_app
+nodea # pcs resource enable www_app
+....
+
+=== Move resource group
+
+Migrate the resource group to another node.
+
+....
+nodea # pcs resource move webapp
+....
+
+=== Shutdown and start cluster
+
+Stop cluster services on all nodes.
+
+....
+nodea # pcs cluster stop --all
+....
+
+Stop cluster services on all nodes.
+
+....
+nodea # pcs cluster start --all
+....
+
+=== Stop resources outside of cluster
+
+Place a resource in standby and then stop it outside of the cluster control.
+
+....
+nodea # pcs resource unmanage www_app
+nodea # systemctl stop httpd
+....
+
+Unstandby the resource when finished.
+
+....
+nodea # pcs resource manage www_app
+....
+
+=== Resource group failure testing
+
+Try stopping the httpd service with - systemctl stop httpd - You'll notice that the resource is restarted on the same node. This is the default behaviour with RHEL HA. We can tell the resource to failover to another node after X number of failures. Let's take a look at the failcount for the resource.
+
+....
+nodea # crm_failcount -G -r www_apache
+scope=status  name=fail-count-www_apache value=1
+....
+
+First we can clear the failcount and then let's configure the cluster to move a failed resource after 1 failure.
+
+....
+nodea # crm_failcount -D -r www_apache
+nodea # pcs resource defaults migration-threshold=1
+....
+
+Now if we stop httpd we should see the resource move to a different node. Clear the failcount when finished.
+
+....
+nodea # crm_failcount -D -r www_apache
+....
+
+=== Crash cluster node
+
+Identify the active node in the cluster and cause it to crash.
+
+....
+# echo 1 > /proc/sys/kernel/sysrq
+# echo c > /proc/sysrq-trigger
+....
+
+Making resources non-critical
+
+A resource can be marked as non critical to prevent a failover of the resource group.
+
+....
+nodea # pcs resource update www_apache op monitor on-fail=ignore
+....
+
+Now if we stop apache we should see a message saying that the failure has been ignored.
+
+....
+# systemctl stop httpd
+....
+
