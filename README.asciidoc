@@ -609,4 +609,137 @@ nodea # pcs cluster unstandby nodea-priv.example.com
 
 The pcs Web UI can be accessed on any of the nodes. For example, browse to https://nodea.example.com:2224 and login with the hacluster credentials we setup when we installed the cluster.
 
+image::images/pcs_login.png[]
 
+Once logged in, we can add our existing cluster. Select "Add Existing" and enter the name of one the nodes in the cluster. Then enter the password for the hacluster user if prompted. We should now be able to manage the cluster through the web ui. An example of the resources screen can be seen.
+
+image::images/pcs_resources.png[]
+
+== Adding a node
+
+Now let's try adding nodes to the cluster. The workflow is very similar to the steps we took when creating a new cluster.
+
+This time we'll start by installing apache on noded and allowing http traffic through the firewall.
+
+....
+noded # yum -y install httpd php
+noded # firewall-cmd --add-service=http --permanent
+noded # firewall-cmd --add-service=http
+....
+
+Now configure LVM.
+
+....
+noded # lvmconf --enable-halvm --services --startstopservices
+....
+
+Edit /etc/lvm/lvm.conf and add the following line.
+
+./etc/lvm/lvm.conf
+....
+volume_list = [ "rhel" ]
+....
+
+Rebuild the ramdisk and reboot.
+
+....
+noded # dracut -H -f /boot/initramfs-$(uname -r).img $(uname -r)
+noded # reboot
+....
+
+*RHV Only* Add the shared RHV disk to the new node.
+
+*Libvirt Only* For an environment using iscsi then run the following commands.
+
+....
+noded # iscsiadm --mode discoverydb --type sendtargets --portal iscsi-storage.example.com --discover
+noded # iscsiadm --mode node --targetname iqn.1994-05.com.redhat:iscsi-target --portal iscsi-storage.example.com --login
+....
+
+Now we can install the RHEL HA packages.
+
+....
+noded # yum install pcs pacemaker fence-agents-all
+....
+
+Enable cluster communications through the firewall on noded.
+
+....
+noded # firewall-cmd --permanent --add-service=high-availability
+noded # firewall-cmd --add-service=high-availability
+....
+
+Set password for the pcs administration account.
+
+....
+noded # echo Redhat123 | passwd --stdin hacluster
+....
+
+Start and enable the pcs daemon on noded.
+
+....
+noded # systemctl enable pcsd && systemctl start pcsd 
+....
+
+On an existing node, authenticate the pcs admin user against the new node (noded in our example).
+
+....
+nodea # pcs cluster auth noded-priv.example.com
+....
+
+On an existing node, add noded to the cluster.
+
+....
+nodea # pcs cluster node add noded-priv.example.com
+....
+
+Finally, on noded we need to start and enable cluster services.
+
+....
+noded # pcs cluster start && pcs cluster enable
+....
+
+Verify the new node has been succesfully added with pcs status.
+
+Finally we can add the fencing device.
+
+....
+nodea # pcs stonith create noded-fence fence_xvm pcmk_host_map="noded-priv.example.com:noded.example.com"
+....
+
+== Activating LVM outside of the cluster
+
+It may be necessary to start the LVM volumes outside of the cluster control. Let's stop the resource group.
+
+....
+nodea # pcs resource disable webapp
+....
+
+Now check that the volumegroup doesn't have any tags.
+
+....
+nodea # vgs -o tags
+  VG Tags
+....
+
+Add a tag to the VG.
+
+....
+nodea # vgchange --addtag pacemaker ha_vg
+....
+
+Now we can activate the volume group and mount the filesystem.
+
+....
+nodea # vgchange -ay --config activation{volume_list=[\"@pacemaker\"]} ha_vg
+nodea # mount /dev/ha_vg/ha_lv /var/www/html
+....
+
+Once finished we can decactivate the volume group and restart the resource group.
+
+....
+nodea # umount /var/www/html
+nodea # vgchange -an ha_vg
+nodea # vgchange --deltag pacemaker ha_vg
+nodea # pcs resource enable webapp
+....
