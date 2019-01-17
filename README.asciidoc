@@ -2,6 +2,74 @@
 
 == Workshop Agenda
 
+=== Install and Configure
+
+[cols=2*,options=header]
+|===
+|Item
+|Description
+
+|Create Cluster
+|Create a three node cluster
+
+|Fencing
+|Configure and test fencing
+
+|Prepare resources
+|Prepare the resources which will be managed by the cluster
+
+|Cluster Resources
+|Create and manage cluster resources and nodes
+
+|Manage cluster resource behaviour 	
+|Manage node preference and resource stickiness
+
+|Web UI
+|Access pcsd Web UI
+
+|Adding Nodes
+|Adding a fourth node to the cluster
+
+|Manage LVM
+|Activating LVM outside of the cluster
+|===
+
+=== Testing
+
+[cols=1*,options=header]
+|===
+|Description
+
+| Offline and Online resources
+
+|Controlled failover testing
+
+|Shutdown and Restart of cluster
+
+|Stop resource outside of cluster
+
+|Resource group failure testing
+
+|Crash Node
+|===
+
+=== GFS clustered filesystem
+
+[cols=2*,options=header]
+|===
+|Item
+|Description
+
+|Reset Labs
+|Re-deploy virtual environment
+
+|Create Cluster
+|Create a new 3 node cluster
+
+|Configure GFS2
+|Configure GFS2 and related cluster resources
+|===
+
 == Labs Overview
 
 image::images/RHEL_HA_Networks.png[]
