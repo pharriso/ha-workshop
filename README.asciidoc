@@ -339,3 +339,274 @@ Now let's install apache on *all nodes* and enable http traffic through the fire
 # firewall-cmd --add-service=http --permanent
 # firewall-cmd --add-service=http
 ....
+
+== Create and Manage Cluster Resources
+
+=== Creating Resources
+
+We can list all available resource types:
+
+....
+# pcs resource list
+....
+
+To list the options for a particular resource:
+
+....
+# pcs resource describe LVM
+Assumed agent name 'ocf:heartbeat:LVM' (deduced from 'LVM')
+ocf:heartbeat:LVM - Controls the availability of an LVM Volume Group
+
+Resource script for LVM. It manages an Linux Volume Manager volume (LVM) 
+as an HA resource.
+
+Resource options:
+  volgrpname (required): The name of volume group.
+  exclusive: If set, the volume group will be activated exclusively. This option works one of two ways. If the volume group has the cluster attribute
+             set, then the volume group will be activated exclusively using clvmd across the cluster. If the cluster attribute is not set, the volume
+             group will be activated exclusively through the use of the volume_list filter in lvm.conf. In the filter scenario, the LVM agent
+             verifies that pacemaker's configuration will result in the volume group only being active on a single node in the cluster and that the
+             local node's volume_list filter will prevent the volume group from activating outside of the resource agent. On activation this agent
+             claims the volume group through the use of a unique tag, and then overrides the volume_list field in a way that allows the volume group
+             to be activated only by the agent. To use exclusive activation without clvmd, the volume_list in lvm.conf must be initialized. If volume
+             groups exist locally that are not controlled by the cluster, such as the root volume group, make sure those volume groups are listed in
+             the volume_list so they will be allowed to activate on bootup.
+  tag: If "exclusive" is set on a non clustered volume group, this overrides the tag to be used.
+  partial_activation: If set, the volume group will be activated even only partial of the physical volumes available. It helps to set to true, when
+                      you are using mirroring logical volumes.
+
+Default operations:
+  start: interval=0s timeout=30
+  stop: interval=0s timeout=30
+  monitor: interval=10 timeout=30
+  methods: interval=0s timeout=5
+....
+
+Now we are going to create a resource group consisting of the following resources:
+
+. HA-LVM
+. Filesystem
+. Apache Web server
+. Virtual IP
+
+Resources added to a resource group are started in the order they are added. First let's add the HA-LVM resource to activate the volume group.
+
+....
+nodea # pcs resource create www_vg LVM volgrpname=ha_vg exclusive=true --group webapp
+....
+
+Next we need to add a filesystem. We will mount our filesystem at /var/www/html which is our document root.
+
+....
+nodea # pcs resource create www_filesystem filesystem device=/dev/ha_vg/ha_lv directory=/var/www/html fstype=xfs --group webapp
+....
+
+The next resource we will add will be the virtual IP.
+
+....
+nodea # pcs resource create www_vip IPaddr2 ip=192.168.122.15 --group webapp
+....
+
+The final resource we need is apache.
+
+....
+nodea # pcs resource create www_apache systemd:httpd --group webapp
+....
+
+With the cluster resources online let's create a simple webpage in place which will show us the hostname we are running on. On the node running the resources create the file /var/www/html/index.php with the following contents.
+
+./var/www/html/index.php
+....
+<!DOCTYPE html>
+<html>
+<body>
+
+<?php
+echo gethostname();
+?>
+
+</body>
+</html>
+....
+
+Set SELinux contexts.
+
+....
+nodea # cp /root/index.php /var/www/html/index.php
+nodea # restorecon -Rv /var/www/html/
+....
+
+We should now be able to access our website on it's virtual IP address.
+
+=== Managing Resources
+
+Let's quickly test if we can move our resource to a different node. First let's see what node it is running on.
+
+....
+# pcs status
+Cluster name: cluster1
+Stack: corosync
+Current DC: nodea.example.com (version 1.1.18-11.el7_5.2-2b07d5c5a9) - partition with quorum
+Last updated: Mon May 28 21:19:29 2018
+Last change: Mon May 28 21:15:54 2018 by root via crm_resource on nodea.example.com
+
+3 nodes configured
+7 resources configured
+
+Online: [ nodea-priv.example.com nodeb-priv.example.com nodec-priv.example.com ]
+
+Full list of resources:
+
+ nodea-fence	(stonith:fence_xvm):	Started nodea-priv.example.com
+ nodeb-fence	(stonith:fence_xvm):	Started nodec-priv.example.com
+ nodec-fence	(stonith:fence_xvm):	Started nodeb-priv.example.com
+ Resource Group: webapp
+     ha_vg	(ocf::heartbeat:LVM):	Started nodea-priv.example.com
+     www_filesystem	(ocf::heartbeat:Filesystem):	Started nodea-priv.example.com
+     www_vip	(ocf::heartbeat:IPaddr2):	Started nodea-priv.example.com
+     www_apache	(ocf::heartbeat:apache):	Started nodea-priv.example.com
+
+Daemon Status:
+  corosync: active/enabled
+  pacemaker: active/enabled
+  pcsd: active/enabled
+....
+
+Now let's move the resource group. We will come back to the message about location constraints.
+
+....
+# pcs resource move webapp
+Warning: Creating location constraint cli-ban-webapp-on-nodea.example.com with a score of -INFINITY for resource webapp on node nodea.example.com.
+This will prevent webapp from running on nodea.example.com until the constraint is removed. This will be the case even if nodea.example.com is the last node in the cluster.
+....
+
+Now check if the resources are running on a different node.
+
+So what was the message about constraints? When we move a resource it creates a constraint which prevents the resource group from moving back to that node. This constraint can be viewed and cleared as follows.
+
+....
+# pcs constraint
+Location Constraints:
+  Resource: webapp
+    Disabled on: nodea.example.com (score:-INFINITY) (role: Started)
+Ordering Constraints:
+Colocation Constraints:
+Ticket Constraints:
+....
+
+To clear the constraint we can run the following.
+
+....
+# pcs resource clear webapp
+....
+
+=== Stopping, starting & restarting Resources
+
+The following commands stop, start and restart a resource.
+
+....
+# pcs resource disable www_apache
+# pcs resource enable www_apache
+# pcs resource restart www_apache
+....
+
+=== Unmanaging resources
+
+Sometimes it can be useful to be able to stop and start resources outside of the clusters control. Unmanaging a resource stops pcs from actively manaing a resource. The below example would allow us to stop httpd without the cluster taking any action.
+
+....
+# pcs resource unmanage www_apache
+# systemctl stop httpd
+# pcs resource manage www_apache
+....
+
+=== Managing Nodes
+
+Sometimes we need to perform maintenance on nodes and need to either stop them from running resources or particular resources. Placing a node in standby stops it from running any resources.
+
+....
+# pcs cluster standby nodea-priv.example.com
+....
+
+pcs status will confirm the node is now in standby. If it was running the cluster resources they will have moved to another node.
+
+....
+# pcs status
+Cluster name: cluster1
+Stack: corosync
+Current DC: nodea.example.com (version 1.1.18-11.el7_5.2-2b07d5c5a9) - partition with quorum
+Last updated: Thu May 31 15:11:14 2018
+Last change: Thu May 31 15:11:05 2018 by root via cibadmin on nodea.example.com
+
+3 nodes configured
+7 resources configured
+
+Node nodea-priv.example.com: standby
+Online: [ nodeb-priv.example.com nodec-priv.example.com ]
+
+Full list of resources:
+
+ nodea-fence	(stonith:fence_xvm):	Started nodeb-priv.example.com
+ nodeb-fence	(stonith:fence_xvm):	Started nodec-priv.example.com
+ nodec-fence	(stonith:fence_xvm):	Started nodeb-priv.example.com
+ Resource Group: webapp
+     ha_vg	(ocf::heartbeat:LVM):	Started nodec-priv.example.com
+     www_filesystem	(ocf::heartbeat:Filesystem):	Started nodec-priv.example.com
+     www_vip	(ocf::heartbeat:IPaddr2):	Started nodec-priv.example.com
+     www_app	(systemd:httpd):	Starting nodec-priv.example.com
+
+
+Daemon Status:
+  corosync: active/enabled
+  pacemaker: active/enabled
+  pcsd: active/enabled
+....
+
+To enable the node to run resources again we need to unstandby it.
+
+....
+# pcs cluster unstandby nodea-priv.example.com
+....
+
+Banning a resource just prevents that resource from running on that node. This may be useful if you have multiple resource groups and only want to prevent one of them from running on a node.
+
+....
+# pcs resource ban www_apache nodec-priv.example.com
+# pcs resource clear www_apache
+....
+
+=== Node preference and resource stickiness
+
+A preferred node can be set for resources to ensure it always runs on that particular node. Let's make nodea our preferred node by giving it a score of 200. This is how much we want it to run on that node. On it's own that number doesn't mean a lot but we'll come back to that later.
+
+....
+nodea # pcs constraint location webapp prefers nodea-priv.example.com=200
+....
+
+Now if we put nodea into standby the resource group will move to another cluster member. If we then unstandby it we should see the resource group move back to nodea.
+
+....
+nodea # pcs cluster standby nodea-priv.example.com
+nodea # pcs cluster unstandby nodea-priv.example.com
+....
+
+The fact that the resource has moved back when it is in a perfectly healthy state may not be desireable. This causes unnecessary downtime for our application. This is where resource stickiness comes into play. This allows us to say how much we want our resource to stay where it currently is. If the score is higher than the score we gave to our preferred node then the resource should stay where it is.
+
+Let's set our resource stickiness.
+
+....
+nodea # pcs resource defaults resource-stickiness=500
+....
+
+Now let's repeat our test. The resource group should stay where it is.
+
+....
+nodea # pcs cluster standby nodea-priv.example.com
+nodea # pcs cluster unstandby nodea-priv.example.com
+....
+
+== Web UI
+
+The pcs Web UI can be accessed on any of the nodes. For example, browse to https://nodea.example.com:2224 and login with the hacluster credentials we setup when we installed the cluster.
+
+
