@@ -264,3 +264,78 @@ Daemon Status:
 The node should go OFFLINE before re-joining the cluster.
 
 == Prepare Cluster Resources
+
+We are going to configure a basic resource group which consists of the following.
+
+. HA-LVM
+. Filesystem
+. Apache Web server
+. Virtual IP
+
+We need to prepare these resources before we can add them to the cluster.
+
+=== Libvirt iSCSI configuration
+
+*NOTE:* This is not required if we are deploying on RHV. First we need to discover the iSCSI targets and then login. We need to do this on *all nodes*.
+
+....
+# iscsiadm --mode discoverydb --type sendtargets --portal iscsi-storage.example.com --discover
+# iscsiadm --mode node --targetname iqn.1994-05.com.redhat:iscsi-target --portal iscsi-storage.example.com --login
+....
+
+=== RHV Shared Storage
+
+For RHV environments we can create a shared virtual disk and add this to each node.
+
+=== Confirm storage is visible
+
+dmesg should confirm we have discovered a disk - sda
+
+....
+[378055.438294] sd 2:0:0:0: [sda] 41934848 512-byte logical blocks: (21.4 GB/19.9 GiB)
+[378055.438576] sd 2:0:0:0: [sda] Write Protect is off
+[378055.438579] sd 2:0:0:0: [sda] Mode Sense: 43 00 10 08
+[378055.438685] sd 2:0:0:0: [sda] Write cache: enabled, read cache: enabled, supports DPO and FUA
+[378055.444792] sd 2:0:0:0: [sda] Attached SCSI disk
+....
+
+=== LVM and Filesystem
+
+On *nodea* let's configure the LVM volume.
+
+....
+nodea # pvcreate /dev/sda
+nodea # vgcreate ha_vg /dev/sda
+nodea # lvcreate -L 5G -n ha_lv ha_vg
+nodea # mkfs.xfs /dev/ha_vg/ha_lv
+....
+
+Now on *each node* we need to configure exclusive activation of a LVM volume group.
+
+....
+# lvmconf --enable-halvm --services --startstopservices
+....
+
+Next we need ensure the local volume groups will still be activated outside of the cluster. Edit /etc/lvm/lvm.conf on *each node* and add the following line.
+
+./etc/lvm/lvm.conf
+....
+volume_list = [ "rhel" ]
+....
+
+Rebuild the ramdisk on *each node* to ensure the nodes will only activate their local volume group and not the cluster volume groups.
+
+....
+# dracut -H -f /boot/initramfs-$(uname -r).img $(uname -r)
+# reboot
+....
+
+=== Apache
+
+Now let's install apache on *all nodes* and enable http traffic through the firewall.
+
+....
+# yum -y install httpd php
+# firewall-cmd --add-service=http --permanent
+# firewall-cmd --add-service=http
+....
